@@ -1,0 +1,77 @@
+/**
+ * trends.js — AQI Monitor
+ * Trends page: time series, monthly, hourly, correlation heatmap
+ */
+
+let tsChart, moChart, hrChart;
+
+window.loadPageData = async function(city = 'All Cities') {
+    const metric  = document.getElementById('metric-select')?.value  || 'aqi';
+    const window_ = document.getElementById('window-range')?.value   || 7;
+    const showRaw = document.getElementById('show-raw')?.checked     ?? true;
+
+    const data = await fetch(
+        `/api/trends?city=${encodeURIComponent(city)}&metric=${metric}&window=${window_}`
+    ).then(r => r.json()).catch(() => null);
+
+    if (!data || data.error) { showToast('❌', 'Failed to load trends'); return; }
+
+    // Stats
+    setText('stat-mean',   data.stats.mean);
+    setText('stat-median', data.stats.median);
+    setText('stat-max',    data.stats.max);
+
+    const dir  = data.trend?.trend_direction || 'N/A';
+    const tEl  = document.getElementById('stat-trend');
+    if (tEl) {
+        tEl.textContent = (dir === 'worsening' ? '↑ ' : '↓ ') + dir.charAt(0).toUpperCase() + dir.slice(1);
+        tEl.style.color = dir === 'worsening' ? '#ef4444' : '#22c55e';
+    }
+
+    // Charts
+        // Charts with safety checks
+   const tsLabels = data.timeseries.labels.map(l => {
+    try {
+        if (l && l !== "Invalid" && l !== "00:00") {
+            // If it's already a time string like "10:00", keep it
+            return l;
+        } else {
+            return "00:00"; // safe fallback
+        }
+    } catch (e) {
+        return "00:00";
+    }
+});
+
+    if (typeof renderTimeseriesChart === 'function') {
+        tsChart = renderTimeseriesChart(tsLabels, data.timeseries.raw, data.timeseries.roll, showRaw, tsChart);
+    }
+
+    if (typeof renderMonthlyChart === 'function') {
+        moChart = renderMonthlyChart(data.monthly.labels, data.monthly.values, moChart);
+    } else {
+        console.warn("renderMonthlyChart is not available");
+    }
+
+    if (typeof renderHourlyChart === 'function') {
+        hrChart = renderHourlyChart(data.hourly.labels, data.hourly.values, hrChart);
+    } else {
+        console.warn("renderHourlyChart is not available");
+    }
+
+    if (typeof renderCorrelationHeatmap === 'function') {
+        renderCorrelationHeatmap(data.correlation);
+    }
+}
+
+document.getElementById('window-range')?.addEventListener('input', function () {
+    const el = document.getElementById('window-val');
+    if (el) el.textContent = this.value + ' pts';
+    
+    // Force reload when slider changes
+    loadPageData(AQI.currentCity);
+});
+document.getElementById('metric-select')?.addEventListener('change', () => loadPageData(AQI.currentCity));
+document.getElementById('show-raw')?.addEventListener('change',       () => loadPageData(AQI.currentCity));
+
+loadPageData();

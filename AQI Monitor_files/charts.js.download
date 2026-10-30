@@ -1,0 +1,436 @@
+ /**
+ * charts.js — AQI Monitor
+ * All chart creation and update functions.
+ * Chart.js for simple line/bar, Plotly for heatmaps and complex charts.
+ */
+
+// ── Shared Chart.js defaults ──────────────────────────────────────────────────
+Chart.defaults.font.family = 'Plus Jakarta Sans, sans-serif';
+Chart.defaults.font.size   = 11;
+Chart.defaults.color       = '#9ca3af';
+
+const CHART_DEFAULTS = {
+    responsive:          true,
+    maintainAspectRatio: false,
+    animation:           { duration: 600, easing: 'easeOutQuart' },
+    plugins: {
+        legend: { display: false },
+        tooltip: {
+            backgroundColor: '#ffffff',
+            titleColor:      '#374151',
+            bodyColor:       '#6b7280',
+            borderColor:     '#e5e7eb',
+            borderWidth:     1,
+            padding:         10,
+            cornerRadius:    8,
+            displayColors:   false,
+        },
+    },
+    scales: {
+        x: {
+            grid:  { display: false },
+            ticks: { color: '#9ca3af', font: { size: 10 } },
+            border:{ display: false },
+        },
+        y: {
+            grid:   { color: '#f3f4f6', drawBorder: false },
+            ticks:  { color: '#9ca3af', font: { size: 10 } },
+            border: { display: false },
+        },
+    },
+};
+
+// ── Plotly shared layout ──────────────────────────────────────────────────────
+const PLOTLY_LAYOUT = {
+    paper_bgcolor: '#ffffff',
+    plot_bgcolor:  '#ffffff',
+    font: { family: 'Plus Jakarta Sans, sans-serif', size: 11, color: '#9ca3af' },
+    margin: { l: 40, r: 16, t: 10, b: 40 },
+    xaxis: { gridcolor: '#f3f4f6', linecolor: '#e5e7eb', tickcolor: 'transparent' },
+    yaxis: { gridcolor: '#f3f4f6', linecolor: '#e5e7eb', tickcolor: 'transparent' },
+};
+
+const PLOTLY_CONFIG = { responsive: true, displayModeBar: false };
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// OVERVIEW CHARTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Render the 24-hour trend area chart on the overview page.
+ * @param {string[]} labels  - Time labels (HH:MM)
+ * @param {number[]} values  - AQI values
+ * @param {Chart|null} existing - Existing chart instance to destroy
+ * @returns {Chart} New chart instance
+ */
+/**
+ * Render the 24-hour trend area chart on the overview page.
+ * @param {string[]} labels  - Time labels (HH:MM)
+ * @param {number[]} values  - AQI values
+ * @param {Chart|null} existing - Existing chart instance to destroy
+ * @returns {Chart} New chart instance
+ */
+/**
+ * Render the 24-hour trend area chart on the overview page.
+ */
+/**
+ * Render the 24-hour trend area chart on the overview page.
+ */
+function renderTrendChart(labels, values, existing = null) {
+    if (existing) existing.destroy();
+    const ctx = document.getElementById('trend-chart');
+    if (!ctx) return null;
+
+    const cappedValues = values.map(v => Math.min(Math.max(v || 0, 0), 500));
+
+    const minVal = Math.min(...cappedValues);
+    const maxVal = Math.max(...cappedValues);
+    const padding = Math.max(40, Math.round((maxVal - minVal) * 0.2));
+
+    return new Chart(ctx.getContext('2d'), {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [{
+                data: cappedValues,
+                borderColor: '#2563eb',
+                borderWidth: 3.5,
+                backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                fill: true,
+                tension: 0.4,
+                pointRadius: 0,
+            }],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: '#1f2937',
+                    titleColor: '#fff',
+                    bodyColor: '#ddd',
+                    callbacks: { label: ctx => `AQI: ${Math.round(ctx.raw)}` }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { display: false },
+                    ticks: {
+                        color: '#6b7280',
+                        font: { size: 10 },
+                        maxTicksLimit: 12,
+                        maxRotation: 0
+                    }
+                },
+                y: {
+                    min: Math.max(0, Math.floor(minVal - padding)),
+                    max: Math.min(500, Math.ceil(maxVal + padding)),
+                    grid: { color: '#f1f5f9' },
+                    ticks: { color: '#6b7280', font: { size: 10 } }
+                }
+            }
+        }
+    });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TRENDS CHARTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Render the full time series chart with raw scatter + rolling avg line.
+ */
+function renderTimeseriesChart(labels, rawData, rollData, showRaw, existing = null) {
+    if (existing) existing.destroy();
+    const ctx = document.getElementById('timeseries-chart');
+    if (!ctx) return null;
+
+    const datasets = [{
+        label:           'Rolling Avg',
+        data:            rollData,
+        borderColor:     '#3b82f6',
+        borderWidth:     2.5,
+        backgroundColor: 'rgba(59,130,246,0.07)',
+        fill:            true,
+        tension:         0.4,
+        pointRadius:     0,
+        order:           1,
+    }];
+
+    if (showRaw) {
+        datasets.push({
+            label:           'Raw',
+            data:            rawData,
+            borderColor:     'transparent',
+            backgroundColor: 'rgba(147,197,253,0.45)',
+            pointRadius:     2.5,
+            pointStyle:      'circle',
+            fill:            false,
+            type:            'scatter',
+            order:           2,
+        });
+    }
+
+    return new Chart(ctx.getContext('2d'), {
+        type: 'line',
+        data: { labels, datasets },
+        options: {
+            ...CHART_DEFAULTS,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                ...CHART_DEFAULTS.plugins,
+                tooltip: {
+                    mode: 'index',
+                    intersect: false,
+                    callbacks: {
+                        title: function(tooltipItems) {
+                            // Show "Reading X" instead of 00:00
+                            const index = tooltipItems[0].dataIndex;
+                            return `Reading ${index + 1}`;
+                        },
+                        label: function(context) {
+                            return `${context.dataset.label}: ${context.parsed.y.toFixed(1)}`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: { 
+                    ...CHART_DEFAULTS.scales.x, 
+                    ticks: { 
+                        display: false,     // ← Completely hides the 00:00 labels
+                        maxTicksLimit: 10 
+                    },
+                    border: { display: false }
+                },
+                y: { 
+                    ...CHART_DEFAULTS.scales.y, 
+                    beginAtZero: true 
+                },
+            },
+        },
+    });
+}
+
+function renderMonthlyChart(labels, values, existing = null) {
+    if (existing) existing.destroy();
+
+    const ctx = document.getElementById('monthly-chart');
+    if (!ctx) return null;
+
+    // Fallback if data is bad or empty
+    if (!labels || !values || labels.length === 0 || values.length === 0) {
+        labels = ["No Data"];
+        values = [0];
+    }
+
+    // If only one value, make it look better
+    if (labels.length === 1) {
+        labels = ["January", "February", "March", "April", "May", "June"];
+        values = Array(6).fill(values[0]);
+    }
+
+    return new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Average AQI',
+                data: values,
+                backgroundColor: '#60a5fa',
+                borderColor: '#3b82f6',
+                borderWidth: 1,
+                borderRadius: 6,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { 
+                    grid: { display: false },
+                    ticks: { color: '#64748b', font: { size: 11 } }
+                },
+                y: { 
+                    grid: { color: '#e2e8f0' },
+                    ticks: { color: '#64748b', font: { size: 11 } },
+                    beginAtZero: true 
+                }
+            }
+        }
+    });
+}
+function renderHourlyChart(labels, values, existing = null) {
+    if (existing) existing.destroy();
+
+    const ctx = document.getElementById('hourly-chart');
+    if (!ctx) return null;
+
+    if (!labels || !values || labels.length === 0) {
+        labels = Array.from({length: 24}, (_, i) => `${i.toString().padStart(2, '0')}:00`);
+        values = Array(24).fill(0);
+    }
+
+    return new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Average AQI by Hour',
+                data: values,
+                backgroundColor: '#60a5fa',
+                borderColor: '#3b82f6',
+                borderWidth: 1,
+                borderRadius: 6,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { 
+                    grid: { display: false },
+                    ticks: { color: '#64748b', font: { size: 10 }, maxTicksLimit: 12 }
+                },
+                y: { 
+                    grid: { color: '#e2e8f0' },
+                    ticks: { color: '#64748b', font: { size: 10 } },
+                    beginAtZero: true 
+                }
+            }
+        }
+    });
+}
+/**
+ * Render pollutant correlation heatmap using Plotly.
+ */
+function renderCorrelationHeatmap(correlationData) {
+    const el = document.getElementById('corr-chart');
+    if (!el) return;
+
+    const keys = Object.keys(correlationData);
+    if (!keys.length) { showEmpty('corr-chart', '📊', 'No correlation data'); return; }
+
+    const z = keys.map(row => keys.map(col => correlationData[row]?.[col] ?? 0));
+
+    Plotly.newPlot(el, [{
+        type:         'heatmap',
+        z, x: keys, y: keys,
+        colorscale:   [[0, '#fecaca'], [0.5, '#f9fafb'], [1, '#bfdbfe']],
+        zmin: -1, zmax: 1,
+        text:         z.map(row => row.map(v => v.toFixed(2))),
+        texttemplate: '%{text}',
+        textfont:     { size: 11, color: '#374151', family: 'Plus Jakarta Sans' },
+        showscale:    true,
+        colorbar:     { thickness: 10, len: 0.9, tickfont: { size: 9 } },
+        hovertemplate: '<b>%{y} × %{x}</b><br>Correlation: %{z:.2f}<extra></extra>',
+    }], {
+        ...PLOTLY_LAYOUT,
+        margin: { l: 60, r: 20, t: 10, b: 60 },
+        height: 320,
+    }, PLOTLY_CONFIG);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FORECAST CHARTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Render 48-hour forecast ribbon chart using Plotly.
+ * @param {object} data - Forecast API response
+ */
+function renderForecastChart(data) {
+    const el = document.getElementById('forecast-chart');
+    if (!el) return;
+
+    const lower = data.aqi.map(v => Math.max(0,   v * 0.85));
+    const upper = data.aqi.map(v => Math.min(500, v * 1.15));
+
+    Plotly.newPlot(el, [
+        // Uncertainty ribbon
+        {
+            x:          [...data.times, ...data.times.slice().reverse()],
+            y:          [...upper, ...lower.slice().reverse()],
+            fill:       'toself',
+            fillcolor:  'rgba(59,130,246,0.08)',
+            line:       { color: 'rgba(0,0,0,0)' },
+            name:       '±15% band',
+            hoverinfo:  'skip',
+            showlegend: false,
+        },
+        // Forecast line
+        {
+            x:    data.times,
+            y:    data.aqi,
+            type: 'scatter',
+            mode: 'lines',
+            name: 'AQI Forecast',
+            line: { color: '#3b82f6', width: 2.5, shape: 'spline' },
+            hovertemplate: '<b>%{x}</b><br>AQI: %{y:.0f}<extra></extra>',
+        },
+        // Peak marker
+        {
+            x:    [data.times[data.peak_hour - 1]],
+            y:    [data.peak_aqi],
+            type: 'scatter',
+            mode: 'markers+text',
+            marker:       { size: 10, color: '#ef4444', symbol: 'diamond' },
+            text:         [`  Peak ${data.peak_aqi}`],
+            textposition: 'middle right',
+            textfont:     { color: '#ef4444', size: 11 },
+            name:         'Peak',
+            hoverinfo:    'skip',
+            showlegend:   false,
+        },
+    ], {
+        ...PLOTLY_LAYOUT,
+        height:    360,
+        hovermode: 'x unified',
+        showlegend: false,
+        xaxis: { ...PLOTLY_LAYOUT.xaxis, tickangle: -25, tickfont: { size: 10 } },
+        yaxis: { ...PLOTLY_LAYOUT.yaxis, rangemode: 'tozero', title: { text: 'AQI', font: { size: 11 } } },
+    }, PLOTLY_CONFIG);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ALERTS CHARTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Render alerts-by-city horizontal bar chart.
+ */
+function renderAlertCityChart(byCity) {
+    const el = document.getElementById('city-chart');
+    if (!el) return;
+
+    const keys = Object.keys(byCity);
+    if (!keys.length) {
+        showEmpty('city-chart', '📭', 'No alerts yet');
+        return;
+    }
+
+    Plotly.newPlot(el, [{
+        type:        'bar',
+        orientation: 'h',
+        x:           keys.map(k => byCity[k]),
+        y:           keys,
+        marker:      { color: 'rgba(239,68,68,0.7)', line: { width: 0 } },
+        hovertemplate: '<b>%{y}</b><br>Alerts: %{x}<extra></extra>',
+    }], {
+        ...PLOTLY_LAYOUT,
+        height: 180,
+        margin: { l: 80, r: 10, t: 5, b: 30 },
+        xaxis:  { ...PLOTLY_LAYOUT.xaxis, tickfont: { size: 10 } },
+        yaxis:  { ...PLOTLY_LAYOUT.yaxis, tickfont: { size: 10 } },
+    }, PLOTLY_CONFIG);
+}
+// ── Chart destroy helper ──────────────────────────────────────────────────────
+function destroyChart(instance) {
+    if (instance && typeof instance.destroy === 'function') {
+        instance.destroy();
+    }
+    return null;
+}

@@ -1,0 +1,262 @@
+   /**
+ * main.js — AQI Monitor
+ * App init, navigation, city selector, shared utilities
+ */
+
+// ── Shared app state ──────────────────────────────────────────────────────────
+const AQI = {
+    currentCity: 'All Cities',
+    isLoading:   false,
+
+    // AQI color lookup
+    palette: [
+        { max: 50,  label: 'Good',         color: '#22c55e', bg: '#f0fdf4', border: '#bbf7d0' },
+        { max: 100, label: 'Satisfactory',  color: '#84cc16', bg: '#f7fee7', border: '#d9f99d' },
+        { max: 200, label: 'Moderate',      color: '#eab308', bg: '#fefce8', border: '#fde68a' },
+        { max: 300, label: 'Poor',          color: '#f97316', bg: '#fff7ed', border: '#fed7aa' },
+        { max: 400, label: 'Very Poor',     color: '#ef4444', bg: '#fef2f2', border: '#fecaca' },
+        { max: 500, label: 'Severe',        color: '#a855f7', bg: '#faf5ff', border: '#e9d5ff' },
+    ],
+
+    // Icons per category
+    icons: {
+        'Good': '🟢', 'Satisfactory': '🟡', 'Moderate': '🟡',
+        'Poor': '🟠', 'Very Poor': '🔴', 'Severe': '🔴', 'Unknown': '⚪',
+    },
+
+    // Health status dot colors
+    statusColors: {
+        good: '#22c55e', moderate: '#eab308', poor: '#f97316', severe: '#ef4444',
+    },
+
+    // Pollutant accent colors
+    pollutantColors: {
+        pm25: '#22c55e', pm10: '#eab308', o3: '#f97316',
+        no2:  '#22c55e', so2:  '#ef4444', co:  '#a855f7',
+    },
+
+    getMeta(aqi) {
+        if (aqi == null) return { label: 'Unknown', color: '#9ca3af', bg: '#f9fafb', border: '#e5e7eb' };
+        return this.palette.find(p => aqi <= p.max) || this.palette[this.palette.length - 1];
+    },
+};
+
+// ── DOM ready ─────────────────────────────────────────────────────────────────
+// Scripts load at bottom of <body> so DOM is already ready — no need to wait
+initNavigation();
+initCitySelector();
+initAlertBadge();
+initToast();
+
+// ── Page reveal on load ───────────────────────────────────────────────────────
+function revealPage() {
+    const overlay = document.getElementById('page-transition');
+    if (overlay) {
+        overlay.classList.remove('leaving');
+    }
+}
+
+// ── Navigation with transitions ───────────────────────────────────────────────
+function initNavigation() {
+    const overlay = document.getElementById('page-transition');
+    if (!overlay) return;
+
+    document.querySelectorAll('a.sidebar-link').forEach(link => {
+        link.addEventListener('click', function (e) {
+            const href = this.getAttribute('href');
+            if (!href || href === '#' || href.startsWith('http')) return;
+            e.preventDefault();
+            overlay.classList.add('leaving');
+            setTimeout(() => { window.location.href = href; }, 180);
+        });
+    });
+
+
+    // Highlight active link based on current path
+    const path = window.location.pathname;
+    document.querySelectorAll('a.sidebar-link').forEach(link => {
+        link.classList.remove('active');
+        const href = link.getAttribute('href');
+        if (href === path || (path === '/' && href === '/')) {
+            link.classList.add('active');
+        }
+    });
+}
+
+// ── City selector ─────────────────────────────────────────────────────────────
+// ── City selector ─────────────────────────────────────────────────────────────
+function initCitySelector() {
+    const select = document.getElementById('city-select');
+    if (!select) return;
+
+    select.addEventListener('change', function () {
+        AQI.currentCity = this.value;
+        updateCityDot(this.value);
+
+        // Only auto-refresh if we are on a page that has loadPageData (Forecast, Trends, etc.)
+        if (typeof loadPageData === 'function') {
+            loadPageData(this.value);
+        }
+    });
+}
+
+function updateCityDot(city) {
+    const dot = document.getElementById('city-dot');
+    if (dot) dot.style.background = city === 'All Cities' ? '#22c55e' : '#3b82f6';
+}
+
+// ── Alert badge ───────────────────────────────────────────────────────────────
+function initAlertBadge() {
+    fetch('/api/alerts')
+        .then(r => r.json())
+        .then(data => {
+            const badge = document.getElementById('alert-badge');
+            if (!badge) return;
+            const critical = data?.summary?.critical || 0;
+            if (critical > 0) {
+                badge.textContent = critical;
+                badge.classList.remove('hidden');
+            }
+        })
+        .catch(() => {});
+}
+
+// ── Toast system ──────────────────────────────────────────────────────────────
+let toastTimer = null;
+
+function initToast() {
+    if (!document.getElementById('toast')) {
+        const el = document.createElement('div');
+        el.id = 'toast';
+        el.className = 'toast';
+        el.innerHTML = `<span id="toast-icon"></span><span id="toast-msg"></span>`;
+        document.body.appendChild(el);
+    }
+}
+
+function showToast(icon, message, duration = 3000) {
+    const toast   = document.getElementById('toast');
+    const iconEl  = document.getElementById('toast-icon');
+    const msgEl   = document.getElementById('toast-msg');
+    if (!toast) return;
+
+    iconEl.textContent = icon;
+    msgEl.textContent  = message;
+    toast.classList.add('show');
+
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove('show'), duration);
+}
+
+/// ── Refresh button ────────────────────────────────────────────────────────────
+function refreshData() {
+    const icon = document.getElementById('refresh-icon');
+    if (icon) {
+        icon.style.transition = 'transform 0.8s linear';
+        icon.style.transform  = 'rotate(360deg)';
+        setTimeout(() => {
+            icon.style.transition = '';
+            icon.style.transform  = '';
+        }, 800);
+    }
+
+    const city = AQI.currentCity || 'All Cities';
+    console.log(`[Refresh] Triggered for city: ${city}`);
+
+    // Safe call for page-specific functions like loadPageData on Forecast page
+    if (typeof loadPageData === 'function') {
+        loadPageData(city);
+    } else {
+        console.warn(`[main.js] loadPageData is not defined on this page`);
+    }
+}
+
+// ── Safe call helper ─────────────────────────────────────────────────────────
+function safeCallPageFunction(funcName, ...args) {
+    if (typeof window[funcName] === 'function') {
+        window[funcName](...args);
+    } else {
+        console.warn(`[main.js] ${funcName} is not defined on this page`);
+    }
+}
+
+// ── Export data ───────────────────────────────────────────────────────────────
+function exportData() {
+    fetch(`/api/overview?city=${encodeURIComponent(AQI.currentCity)}`)
+        .then(r => r.json())
+        .then(data => {
+            const rows = [['City', 'AQI', 'Category', 'PM2.5', 'PM10']];
+            (data.city_table || []).forEach(r => {
+                rows.push([r.city, r.mean || r.aqi, r.category || '', r.pm25 ?? '', r.pm10 ?? '']);
+            });
+            const csv  = rows.map(r => r.join(',')).join('\n');
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const a    = document.createElement('a');
+            a.href     = URL.createObjectURL(blob);
+            a.download = `aqi_export_${new Date().toISOString().slice(0,10)}.csv`;
+            a.click();
+            showToast('📥', 'Data exported successfully');
+        })
+        .catch(() => showToast('❌', 'Export failed'));
+}
+
+// ── Shared UI helpers ─────────────────────────────────────────────────────────
+
+/** Remove skeleton class from an element and set its text */
+function setText(id, value, color = null) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.remove('skeleton');
+    el.textContent = value || '—';
+    if (color) el.style.color = color;
+}
+
+/** Create a colored badge pill */
+function badge(text, color, bg) {
+    return `<span class="badge" style="background:${bg};color:${color}">${text}</span>`;
+}
+
+/** Create a progress bar HTML string */
+function progressBar(pct, color) {
+    return `
+    <div class="progress-bar" style="width:80px">
+        <div class="progress-fill" style="width:${Math.min(pct, 100)}%;background:${color}"></div>
+    </div>`;
+}
+
+/** Render a loading spinner inside an element */
+function showSpinner(id, message = 'Loading...') {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.innerHTML = `
+    <div class="flex flex-col items-center justify-center h-full py-10 gap-3">
+        <div class="spinner"></div>
+        <p class="text-xs text-gray-400">${message}</p>
+    </div>`;
+}
+
+/** Render an empty state inside an element */
+function showEmpty(id, icon, message) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.innerHTML = `
+    <div class="empty-state">
+        <div class="empty-state-icon">${icon}</div>
+        <p>${message}</p>
+    </div>`;
+}
+
+/** Format a timestamp string for display */
+function formatTime(isoString) {
+    try {
+        const d = new Date(isoString);
+        return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+    } catch { return isoString; }
+}
+
+function formatDate(isoString) {
+    try {
+        const d = new Date(isoString);
+        return d.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' });
+    } catch { return isoString; }
+}
